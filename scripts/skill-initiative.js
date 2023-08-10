@@ -2,6 +2,18 @@ const moduleID = 'skill-initiative';
 
 const lg = x => console.log(x);
 
+const proficiencyBonusMap = {
+    1: 2,
+    0.5: 1,
+    2: 4,
+    3: 6,
+    4: 8,
+    5: 10,
+    6: 12,
+    7: 14
+};
+
+
 Hooks.once('init', () => {
     libWrapper.register(moduleID, 'CONFIG.Actor.documentClass.prototype.getInitiativeRoll', newGetInitiativeRoll, 'OVERRIDE');
     libWrapper.register(moduleID, 'CONFIG.Actor.documentClass.prototype.rollInitiativeDialog', newRollInitiativeDialog, 'OVERRIDE');
@@ -23,11 +35,13 @@ async function newRollInitiativeDialog(rollOptions = {}) {
     const skillSelect = document.createElement('div');
     skillSelect.classList.add('flexrow');
     skillSelect.style['align-items'] = 'center';
-    const defaultMod = this.system.details.level + this.system.abilities.dex.mod;
+    const defaultMod = (this.system.details.level || Math.max(1, this.system.details.cr)) + this.system.abilities.dex.mod;
     const sign = defaultMod > -1 ? '+' : '';
     let skillOptions = `<option value="">No Skill (${sign}${defaultMod})</option>`;
+    const skillBonusMap = {};
     for (const [skl, skill] of Object.entries(CONFIG.DND5E.skills)) {
-        const actorSkillTotal = this.system.skills[skl].total;
+        const actorSkillTotal = (this.system.skills[skl].mod || 0) + getBonus(this, this.flags['proficiency-levels']?.system?.skills?.[skl]?.value || this.system.skills[skl].value);
+        skillBonusMap[skl] = actorSkillTotal;
         const sign = actorSkillTotal > -1 ? '+' : '';
         skillOptions += `<option value="${skl}">${skill.label} (${sign}${actorSkillTotal})</option>`
     }
@@ -54,7 +68,7 @@ async function newRollInitiativeDialog(rollOptions = {}) {
         }
     }, { id: moduleID });
 
-    const formula = skill ? `1d20 + @skills.${skill}.total` : `1d20 + @details.level + @abilities.dex.mod`;
+    const formula = skill ? `1d20 + ${skillBonusMap[skill]}` : `1d20 + ${this.system.details.level || Math.max(1, this.system.details.cr)} + @abilities.dex.mod`;
     const data = this.getRollData();
     const flags = this.flags.dnd5e || {};
     const options = foundry.utils.mergeObject({
@@ -76,4 +90,12 @@ async function newRollInitiativeDialog(rollOptions = {}) {
     this._cachedInitiativeRoll = roll;
     await this.rollInitiative({ createCombatants: true });
     delete this._cachedInitiativeRoll;
+}
+
+function getBonus(actor, proficiencyLevel) {
+    const level = (actor.system.details.level || Math.max(1, actor.system.details.cr));
+
+    if (!proficiencyLevel) return 0;
+    if (proficiencyLevel === 0.5) return Math.floor(level / 2) + 1;
+    return level + proficiencyBonusMap[proficiencyLevel];
 }
