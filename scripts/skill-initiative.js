@@ -23,9 +23,24 @@ Hooks.once('init', () => {
 function newGetInitiativeRoll(options = {}) {
     if (this._cachedInitiativeRoll) return this._cachedInitiativeRoll;
 
-    const formula = `1d20 + @details.level`;
     const data = this.getRollData();
+    const parts = ['1d20', '@details.level'];
 
+    // Special initiative bonuses
+    const init = this.system.attributes?.init;
+    if (init) {
+        parts.push(init.mod);
+        if (init.prof.term !== "0") {
+            parts.push("@prof");
+            data.prof = init.prof.term;
+        }
+        if (init.bonus) {
+            parts.push("@bonus");
+            data.bonus = Roll.replaceFormulaData(init.bonus, data);
+        }
+    }
+
+    const formula = parts.join(' + ');
     return new CONFIG.Dice.D20Roll(formula, data, options);
 }
 
@@ -68,8 +83,17 @@ async function newRollInitiativeDialog(rollOptions = {}) {
         }
     }, { id: moduleID });
 
-    const formula = skill ? `1d20 + ${skillBonusMap[skill]}` : `1d20 + ${this.system.details.level || Math.max(1, this.system.details.cr)} + @abilities.dex.mod`;
     const data = this.getRollData();
+    const init = this.system.attributes?.init;
+    const parts = ['1d20'];
+    if (skill) parts.push(skillBonusMap[skill]);
+    else parts.push((this.system.details.level || Math.max(1, this.system.detials.cr)), '@abilities.dex.mod');
+    
+    if (init?.bonus) {
+        parts.push('@bonus');
+        data.bonus = Roll.replaceFormulaData(init.bonus, data);
+    }
+    const formula = parts.join(' + ');
     const flags = this.flags.dnd5e || {};
     const options = foundry.utils.mergeObject({
         flavor: rollOptions.flavor ?? game.i18n.localize("DND5E.Initiative"),
